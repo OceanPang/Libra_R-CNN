@@ -11,12 +11,12 @@ from ..utils import build_conv_layer, build_norm_layer
 
 class Bottleneck(_Bottleneck):
 
-    def __init__(self, *args, groups=1, base_width=4, **kwargs):
+    def __init__(self, inplanes, planes, groups=1, base_width=4, **kwargs):
         """Bottleneck block for ResNeXt.
         If style is "pytorch", the stride-two layer is the 3x3 conv layer,
         if it is "caffe", the stride-two layer is the first 1x1 conv layer.
         """
-        super(Bottleneck, self).__init__(*args, **kwargs)
+        super(Bottleneck, self).__init__(inplanes, planes, **kwargs)
 
         if groups == 1:
             width = self.planes
@@ -24,11 +24,11 @@ class Bottleneck(_Bottleneck):
             width = math.floor(self.planes * (base_width / 64)) * groups
 
         self.norm1_name, norm1 = build_norm_layer(
-            self.normalize, width, postfix=1)
+            self.norm_cfg, width, postfix=1)
         self.norm2_name, norm2 = build_norm_layer(
-            self.normalize, width, postfix=2)
+            self.norm_cfg, width, postfix=2)
         self.norm3_name, norm3 = build_norm_layer(
-            self.normalize, self.planes * self.expansion, postfix=3)
+            self.norm_cfg, self.planes * self.expansion, postfix=3)
 
         self.conv1 = build_conv_layer(
             self.conv_cfg,
@@ -102,8 +102,9 @@ def make_res_layer(block,
                    style='pytorch',
                    with_cp=False,
                    conv_cfg=None,
-                   normalize=dict(type='BN'),
-                   dcn=None):
+                   norm_cfg=dict(type='BN'),
+                   dcn=None,
+                   gcb=None):
     downsample = None
     if stride != 1 or inplanes != planes * block.expansion:
         downsample = nn.Sequential(
@@ -114,14 +115,14 @@ def make_res_layer(block,
                 kernel_size=1,
                 stride=stride,
                 bias=False),
-            build_norm_layer(normalize, planes * block.expansion)[1],
+            build_norm_layer(norm_cfg, planes * block.expansion)[1],
         )
 
     layers = []
     layers.append(
         block(
-            inplanes,
-            planes,
+            inplanes=inplanes,
+            planes=planes,
             stride=stride,
             dilation=dilation,
             downsample=downsample,
@@ -130,14 +131,15 @@ def make_res_layer(block,
             style=style,
             with_cp=with_cp,
             conv_cfg=conv_cfg,
-            normalize=normalize,
-            dcn=dcn))
+            norm_cfg=norm_cfg,
+            dcn=dcn,
+            gcb=gcb))
     inplanes = planes * block.expansion
     for i in range(1, blocks):
         layers.append(
             block(
-                inplanes,
-                planes,
+                inplanes=inplanes,
+                planes=planes,
                 stride=1,
                 dilation=dilation,
                 groups=groups,
@@ -145,8 +147,9 @@ def make_res_layer(block,
                 style=style,
                 with_cp=with_cp,
                 conv_cfg=conv_cfg,
-                normalize=normalize,
-                dcn=dcn))
+                norm_cfg=norm_cfg,
+                dcn=dcn,
+                gcb=gcb))
 
     return nn.Sequential(*layers)
 
@@ -168,7 +171,7 @@ class ResNeXt(ResNet):
             the first 1x1 conv layer.
         frozen_stages (int): Stages to be frozen (all param fixed). -1 means
             not freezing any parameters.
-        normalize (dict): dictionary to construct and config norm layer.
+        norm_cfg (dict): dictionary to construct and config norm layer.
         norm_eval (bool): Whether to set norm layers to eval mode, namely,
             freeze running stats (mean and var). Note: Effect on Batch Norm
             and its variants only.
@@ -195,6 +198,7 @@ class ResNeXt(ResNet):
             stride = self.strides[i]
             dilation = self.dilations[i]
             dcn = self.dcn if self.stage_with_dcn[i] else None
+            gcb = self.gcb if self.stage_with_gcb[i] else None
             planes = 64 * 2**i
             res_layer = make_res_layer(
                 self.block,
@@ -208,8 +212,9 @@ class ResNeXt(ResNet):
                 style=self.style,
                 with_cp=self.with_cp,
                 conv_cfg=self.conv_cfg,
-                normalize=self.normalize,
-                dcn=dcn)
+                norm_cfg=self.norm_cfg,
+                dcn=dcn,
+                gcb=gcb)
             self.inplanes = planes * self.block.expansion
             layer_name = 'layer{}'.format(i + 1)
             self.add_module(layer_name, res_layer)

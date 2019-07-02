@@ -17,9 +17,8 @@ model = dict(
             num_outs=5),
         dict(
             type='BFP',
-            in_channels=[256, 256, 256, 256, 256],
-            out_channels=256,
-            num_outs=5,
+            in_channels=256,
+            num_levels=5,
             refine_level=2,
             refine_type='non_local')
     ],
@@ -63,9 +62,9 @@ train_cfg = dict(
             pos_sampler=dict(type='InstanceBalancedPosSampler'),
             neg_sampler=dict(
                 type='IoUBalancedNegSampler',
-                hard_thr=0.0,
-                hard_fraction=1.0,
-                num_intervals=3)),
+                floor_thr=-1,
+                floor_fraction=0,
+                num_bins=3)),
         pos_weight=-1,
         debug=False))
 test_cfg = dict(

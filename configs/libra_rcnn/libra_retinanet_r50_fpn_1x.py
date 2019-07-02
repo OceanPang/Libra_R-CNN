@@ -20,10 +20,9 @@ model = dict(
             num_outs=5),
         dict(
             type='BFP',
-            in_channels=[256, 256, 256, 256, 256],
-            out_channels=256,
+            in_channels=256,
+            num_levels=5,
             refine_level=1,
-            num_outs=5,
             refine_type='non_local')
     ],
     bbox_head=dict(

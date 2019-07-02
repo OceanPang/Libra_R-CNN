@@ -2,6 +2,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from mmcv.cnn import kaiming_init
 
+from mmdet.core import auto_fp16, force_fp32
 from ..registry import HEADS
 from ..utils import ConvModule
 
@@ -31,7 +32,7 @@ class FusedSemanticHead(nn.Module):
                  ignore_label=255,
                  loss_weight=0.2,
                  conv_cfg=None,
-                 normalize=None):
+                 norm_cfg=None):
         super(FusedSemanticHead, self).__init__()
         self.num_ins = num_ins
         self.fusion_level = fusion_level
@@ -42,8 +43,8 @@ class FusedSemanticHead(nn.Module):
         self.ignore_label = ignore_label
         self.loss_weight = loss_weight
         self.conv_cfg = conv_cfg
-        self.normalize = normalize
-        self.with_bias = normalize is None
+        self.norm_cfg = norm_cfg
+        self.fp16_enabled = False
 
         self.lateral_convs = nn.ModuleList()
         for i in range(self.num_ins):
@@ -53,8 +54,7 @@ class FusedSemanticHead(nn.Module):
                     self.in_channels,
                     1,
                     conv_cfg=self.conv_cfg,
-                    normalize=self.normalize,
-                    bias=self.with_bias,
+                    norm_cfg=self.norm_cfg,
                     inplace=False))
 
         self.convs = nn.ModuleList()
@@ -67,15 +67,13 @@ class FusedSemanticHead(nn.Module):
                     3,
                     padding=1,
                     conv_cfg=self.conv_cfg,
-                    normalize=self.normalize,
-                    bias=self.with_bias))
+                    norm_cfg=self.norm_cfg))
         self.conv_embedding = ConvModule(
             conv_out_channels,
             conv_out_channels,
             1,
             conv_cfg=self.conv_cfg,
-            normalize=self.normalize,
-            bias=self.with_bias)
+            norm_cfg=self.norm_cfg)
         self.conv_logits = nn.Conv2d(conv_out_channels, self.num_classes, 1)
 
         self.criterion = nn.CrossEntropyLoss(ignore_index=ignore_label)
@@ -83,16 +81,14 @@ class FusedSemanticHead(nn.Module):
     def init_weights(self):
         kaiming_init(self.conv_logits)
 
+    @auto_fp16()
     def forward(self, feats):
         x = self.lateral_convs[self.fusion_level](feats[self.fusion_level])
         fused_size = tuple(x.shape[-2:])
         for i, feat in enumerate(feats):
             if i != self.fusion_level:
                 feat = F.interpolate(
-                    feat,
-                    size=fused_size,
-                    mode='bilinear',
-                    align_corners=True)
+                    feat, size=fused_size, mode='bilinear', align_corners=True)
                 x += self.lateral_convs[i](feat)
 
         for i in range(self.num_convs):
@@ -102,6 +98,7 @@ class FusedSemanticHead(nn.Module):
         x = self.conv_embedding(x)
         return mask_pred, x
 
+    @force_fp32(apply_to=('mask_pred',))
     def loss(self, mask_pred, labels):
         labels = labels.squeeze(1).long()
         loss_semantic_seg = self.criterion(mask_pred, labels)
