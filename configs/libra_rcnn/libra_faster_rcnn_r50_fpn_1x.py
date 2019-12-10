@@ -97,7 +97,7 @@ train_cfg = dict(
             pos_sampler=dict(type='InstanceBalancedPosSampler'),
             neg_sampler=dict(
                 type='IoUBalancedNegSampler',
-                floor_thr=-1,
+                floor_thr=0,
                 floor_fraction=0,
                 num_bins=3)),
         pos_weight=-1,
