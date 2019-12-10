@@ -27,13 +27,13 @@ class IoUBalancedNegSampler(RandomSampler):
     def __init__(self,
                  num,
                  pos_fraction,
-                 floor_thr=0,
+                 floor_thr=-1,
                  floor_fraction=0,
                  num_bins=3,
                  **kwargs):
         super(IoUBalancedNegSampler, self).__init__(num, pos_fraction,
                                                     **kwargs)
-        assert floor_thr >= 0
+        assert floor_thr >= 0 or floor_thr == -1
         assert 0 <= floor_fraction <= 1
         assert num_bins >= 1
 
@@ -98,6 +98,7 @@ class IoUBalancedNegSampler(RandomSampler):
                 floor_set = set()
                 iou_sampling_set = set(
                     np.where(max_overlaps > self.floor_thr)[0])
+                self.floor_thr == 0
 
             floor_neg_inds = list(floor_set & neg_set)
             iou_sampling_neg_inds = list(iou_sampling_set & neg_set)
